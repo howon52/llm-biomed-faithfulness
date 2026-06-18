@@ -1,38 +1,54 @@
 """Custom multi-dimension rubric scorer — THE DIFFERENTIATOR (M1).
 
-This is the moat: deciding what counts as *good clinical reasoning* is a
-domain-expertise problem, not a framework problem. The 6 dimensions below are a
-STARTING PROPOSAL — they need a clinician/bio-background review (decision D2 in
-the scope doc) before this becomes the real scorer.
+The moat: deciding what counts as *faithful biomedical reasoning* is a
+domain-expertise problem, not a framework problem. The 6 dimensions below
+encode the judgment a trained bio researcher applies when reading a claim
+against an abstract — overclaim detection and causality care in particular
+require subject-matter knowledge that pure accuracy metrics miss.
 
-M0 uses model_graded_qa in clinical_reasoning_eval.py. To switch to this rubric:
-    from scorers.rubric import clinical_rubric
+M0' uses model_graded_qa in biolit_faithfulness_eval.py (binary PASS/FAIL).
+To switch to this per-dimension rubric for M1:
+    from scorers.rubric import biolit_rubric
     ...
-    scorer=clinical_rubric(grader_model="anthropic/claude-opus-4-8"),
+    scorer=biolit_rubric(grader_model="anthropic/claude-opus-4-8"),
 
-Status: SCAFFOLD. Implement the parse step + finalize dimensions (D2) for M1.
+Status: SCAFFOLD. For M1:
+  - robustly parse DIM1..DIM6 + TOTAL with regex (not brittle split)
+  - store per-dimension sub-scores in Score.metadata for failure-mode analysis
+  - finalize dimension wording after first live run reveals grader ambiguities
 """
 
+import re
+
+from inspect_ai.model import get_model
 from inspect_ai.scorer import Score, accuracy, mean, scorer, stderr
 from inspect_ai.solver import TaskState
-from inspect_ai.model import get_model
 
-# --- The rubric (D2: confirm/edit these dimensions with clinical judgment) ---
+# --- D2: BioLit faithfulness rubric dimensions (bio-research-judgment moat) ---
 RUBRIC_DIMENSIONS = [
-    "Correct primary diagnosis (or correctly flags insufficient info)",
-    "Differential breadth (named the plausible alternatives)",
-    "Can't-miss / red-flag recognition (flagged dangerous-if-missed conditions)",
-    "Calibrated uncertainty (hedged appropriately, no over/under-claim)",
-    "No fabrication (invented no labs/findings not in the vignette)",
-    "Appropriate next step (sensible test/referral, not reckless/over-cautious)",
+    "Verdict correctness — gives the right verdict (supported/refuted/insufficient) "
+    "and identifies the specific abstract passage that drives it",
+    "Overclaim detection — catches generalisation beyond the study's scope "
+    "(population, species, setting, dosage, in-vitro→clinical leaps)",
+    "Causality and effect-size care — distinguishes correlation from causation; "
+    "preserves hedged language ('may', 'associated with'); respects absolute vs "
+    "relative effect sizes",
+    "No fabrication — does not introduce findings, numbers, or citations absent "
+    "from the abstract",
+    "Calibrated uncertainty — hedges where the abstract is genuinely ambiguous; "
+    "does not over- or under-claim confidence in the verdict",
+    "Study-quality awareness — notes relevant design limitations in the abstract "
+    "(model organism, n size, observational vs interventional, preprint) where "
+    "they affect the verdict",
 ]
 
-GRADER_TEMPLATE = """You are grading a clinician's reasoning on a case vignette.
+GRADER_TEMPLATE = """You are grading a biomedical researcher's faithfulness \
+evaluation of a claim against an abstract.
 
-Vignette:
+Abstract + claim (what the candidate was given):
 {question}
 
-Reference reasoning (gold):
+Reference reasoning (gold standard):
 {criterion}
 
 Candidate answer:
@@ -41,7 +57,7 @@ Candidate answer:
 Grade EACH dimension 0-2 (0 = absent/wrong, 1 = partial, 2 = strong):
 {dimensions}
 
-Respond in exactly this format:
+Respond in exactly this format — no extra text:
 DIM1: <0-2> - <one-line justification>
 DIM2: <0-2> - <one-line justification>
 DIM3: <0-2> - <one-line justification>
@@ -51,15 +67,18 @@ DIM6: <0-2> - <one-line justification>
 TOTAL: <0-12>
 """
 
+_DIM_RE = re.compile(r"^DIM(\d):\s*([012])\s*-\s*(.+)$", re.IGNORECASE)
+_TOTAL_RE = re.compile(r"^TOTAL:\s*(\d+)", re.IGNORECASE)
+MAX_SCORE = 12
+
 
 @scorer(metrics=[accuracy(), mean(), stderr()])
-def clinical_rubric(grader_model: str = "anthropic/claude-opus-4-8"):
-    """Per-dimension rubric scorer. Returns normalized total in [0,1].
+def biolit_rubric(grader_model: str = "anthropic/claude-opus-4-8"):
+    """Per-dimension rubric scorer for biomedical literature faithfulness.
 
-    TODO (M1):
-      - finalize RUBRIC_DIMENSIONS with clinical review (D2)
-      - robustly parse the DIM1..DIM6 + TOTAL lines (regex)
-      - store per-dimension sub-scores in Score.metadata for analysis
+    Returns normalised total in [0, 1].  Per-dimension sub-scores are stored
+    in Score.metadata for failure-mode analysis (which dimension do models
+    fail most — overclaim? causality? verdict accuracy?).
     """
     model = get_model(grader_model)
     dims_block = "\n".join(f"{i+1}. {d}" for i, d in enumerate(RUBRIC_DIMENSIONS))
@@ -74,21 +93,33 @@ def clinical_rubric(grader_model: str = "anthropic/claude-opus-4-8"):
         result = await model.generate(prompt)
         text = result.completion
 
-        # --- placeholder parse (M1: make robust + extract per-dim subscores) ---
-        total = None
-        for line in text.splitlines():
-            if line.strip().upper().startswith("TOTAL:"):
-                digits = "".join(c for c in line.split(":", 1)[1] if c.isdigit())
-                if digits:
-                    total = int(digits[:2])
-                break
+        # Parse per-dimension scores and total.
+        dim_scores: dict[int, int] = {}
+        total: int | None = None
 
-        value = (total / 12.0) if total is not None else 0.0
+        for line in text.splitlines():
+            m = _DIM_RE.match(line.strip())
+            if m:
+                dim_scores[int(m.group(1))] = int(m.group(2))
+                continue
+            m = _TOTAL_RE.match(line.strip())
+            if m:
+                total = min(int(m.group(1)), MAX_SCORE)
+
+        # Fallback: sum parsed dims if TOTAL line is absent or garbled.
+        if total is None and dim_scores:
+            total = sum(dim_scores.values())
+
+        value = (total / MAX_SCORE) if total is not None else 0.0
         return Score(
             value=value,
             answer=state.output.completion,
             explanation=text,
-            metadata={"raw_total": total},
+            metadata={
+                "raw_total": total,
+                "dim_scores": dim_scores,
+                "grader_text": text,
+            },
         )
 
     return score

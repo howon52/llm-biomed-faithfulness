@@ -6,3 +6,4 @@ logs/
 .inspect/
 .DS_Store
 .env
+_archive/
