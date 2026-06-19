@@ -1,13 +1,13 @@
-"""BioMed Literature-Faithfulness Evaluation — M0' scaffold.
+"""BioMed Literature-Faithfulness Evaluation — M1.
 
 Measures whether LLMs faithfully interpret biomedical literature: given a
 PubMed abstract and a claim, does the model correctly judge support/refute/
 insufficient, and does its reasoning respect effect sizes, causality, and
 scope?
 
-M0' (this file): runs green with a placeholder model-graded scorer.
-M1 (next): swap in scorers.rubric.biolit_rubric() for per-dimension scoring
-           — that rubric is the differentiator (bio-research-judgment moat).
+Scoring: scorers.rubric.biolit_rubric() — 6-dimension per-dim rubric.
+Per-dimension scores are stored in Score.metadata["dim_scores"] for
+failure-mode analysis across the fleet.
 
 Dataset: data/claim_abstract_pairs.jsonl
   Fields: abstract, claim, verdict, reference_reasoning, pmid,
@@ -21,8 +21,9 @@ Run:
 
 from inspect_ai import Task, task
 from inspect_ai.dataset import Dataset, FieldSpec, Sample, json_dataset
-from inspect_ai.scorer import model_graded_qa
 from inspect_ai.solver import generate, system_message
+
+from scorers.rubric import biolit_rubric
 
 RESEARCHER_PROMPT = (
     "You are a careful biomedical researcher evaluating whether a claim is "
@@ -33,16 +34,6 @@ RESEARCHER_PROMPT = (
     "3. Any overclaim, scope leap, or causality error in the claim (if present).\n"
     "4. Your confidence and what additional information would change it.\n\n"
     "Be precise — quote the abstract directly where relevant."
-)
-
-GRADER_INSTRUCTIONS = (
-    "The candidate evaluated a biomedical claim against an abstract. "
-    "Grade PASS if the candidate: (a) gives the correct verdict "
-    "(supported/refuted/insufficient), AND (b) correctly identifies the "
-    "key passage(s) in the abstract driving that verdict, AND (c) flags any "
-    "overclaim or causality error present in the claim. "
-    "Grade FAIL if the verdict is wrong OR the reasoning misses the critical "
-    "distinction. Briefly justify, quoting the abstract where relevant."
 )
 
 
@@ -83,10 +74,6 @@ def biolit_faithfulness():
             system_message(RESEARCHER_PROMPT),
             generate(),
         ],
-        # M0' placeholder scorer — binary PASS/FAIL against reference reasoning.
-        # M1 replaces this with scorers.rubric.biolit_rubric() for per-dimension
-        # scoring across: verdict correctness, overclaim detection, causality
-        # care, fabrication, calibrated uncertainty, study-quality awareness.
-        scorer=model_graded_qa(instructions=GRADER_INSTRUCTIONS),
+        scorer=biolit_rubric(),
         fail_on_error=0.1,
     )
