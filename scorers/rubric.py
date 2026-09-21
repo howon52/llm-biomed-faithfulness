@@ -6,16 +6,9 @@ encode the judgment a trained bio researcher applies when reading a claim
 against an abstract — overclaim detection and causality care in particular
 require subject-matter knowledge that pure accuracy metrics miss.
 
-M0' uses model_graded_qa in biolit_faithfulness_eval.py (binary PASS/FAIL).
-To switch to this per-dimension rubric for M1:
-    from scorers.rubric import biolit_rubric
-    ...
-    scorer=biolit_rubric(grader_model="anthropic/claude-opus-4-8"),
-
-Status: SCAFFOLD. For M1:
-  - robustly parse DIM1..DIM6 + TOTAL with regex (not brittle split)
-  - store per-dimension sub-scores in Score.metadata for failure-mode analysis
-  - finalize dimension wording after first live run reveals grader ambiguities
+Wired into biolit_faithfulness_eval.py since M1. Parses DIM1..DIM6 + TOTAL
+with regex and stores per-dimension sub-scores in Score.metadata for
+failure-mode analysis. Grader model must differ from the candidate model.
 """
 
 import re

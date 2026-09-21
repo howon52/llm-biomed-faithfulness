@@ -25,15 +25,29 @@ from inspect_ai.solver import generate, system_message
 
 from scorers.rubric import biolit_rubric
 
+# NOTE: keep this prompt NEUTRAL. It must not enumerate the rubric
+# dimensions in scorers/rubric.py. The M1 run (2026-09-08, 12 samples) used a
+# prompt that asked the model to report overclaims, causality errors and
+# confidence — i.e. DIM2/DIM3/DIM5 verbatim — and every dimension named in the
+# prompt scored a flat 2.0 on all 12 samples. DIM6 (study-quality awareness),
+# the only dimension absent from the prompt, was the sole source of variance.
+# Naming a dimension here converts it from a capability measure into a
+# format-compliance check. The verdict label below is required because it
+# defines the task and must be parseable — everything else stays unprompted so
+# the rubric measures what the model volunteers on its own.
+#
+# Ordering matters too: an earlier revision put the verdict line FIRST, and
+# the model complied by emitting a label before it had reasoned — then
+# reasoned correctly and contradicted itself (2/12 samples opened
+# "INSUFFICIENT EVIDENCE" and closed "REFUTED"), costing DIM1/DIM5 for a
+# format artifact rather than a faithfulness failure. Reasoning first,
+# verdict last, keeps the output parseable without forcing a blind commit.
 RESEARCHER_PROMPT = (
     "You are a careful biomedical researcher evaluating whether a claim is "
     "supported by a scientific abstract.\n\n"
-    "Given the abstract and the claim below, respond with:\n"
-    "1. Your verdict: SUPPORTED, REFUTED, or INSUFFICIENT EVIDENCE.\n"
-    "2. The specific text in the abstract that drives your verdict.\n"
-    "3. Any overclaim, scope leap, or causality error in the claim (if present).\n"
-    "4. Your confidence and what additional information would change it.\n\n"
-    "Be precise — quote the abstract directly where relevant."
+    "Read the abstract and the claim below and explain your reasoning.\n\n"
+    "Then end your response with your verdict on its own final line, as "
+    "exactly one of: SUPPORTED, REFUTED, or INSUFFICIENT EVIDENCE."
 )
 
 
