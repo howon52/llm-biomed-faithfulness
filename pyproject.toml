@@ -1,10 +1,19 @@
 [project]
-name = "clinical-reasoning-evals"
+name = "llm-biomed-faithfulness"
 version = "0.1.0"
-description = "Add your description here"
+description = "Eval harness measuring whether LLMs faithfully interpret biomedical abstracts"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.109.2",
     "inspect-ai>=0.3.234",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

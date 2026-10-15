@@ -54,7 +54,7 @@ Golden examples follow a 1-abstract × 4-claim-type structure:
 ## Limitations (honest, current)
 
 - **n = 12, one sub-field (ageing omics), one journal family.** No confidence interval worth reporting; no clinical/RCT, genomics or immunology breadth yet.
-- **Single model evaluated so far**, and in early runs the grader model was the same as the candidate. Grader ≠ candidate is now enforced.
+- **Single model evaluated so far**, and in early runs the grader model was the same as the candidate — which inflates scores, since a judge favours its own house style. Grader ≠ candidate is now enforced in code (`scorers/rubric.py` raises if they coincide); the grader is pinned to `claude-opus-4-8`.
 - **Labels are self-authored** by one bio-trained reader with no second rater. Grader–human agreement has not been measured.
 - **Mean rubric score is not "accuracy."** The score is a continuous [0,1] rubric mean; per-dimension and per-perturbation-type breakdowns with stderr are the intended report format.
 
@@ -74,11 +74,25 @@ Golden examples follow a 1-abstract × 4-claim-type structure:
 uv sync
 
 export ANTHROPIC_API_KEY=...
-export OPENAI_API_KEY=...
 
-inspect eval biolit_faithfulness_eval.py --model anthropic/claude-opus-4-8
+# Candidates sit on a capability gradient; the grader is pinned to
+# claude-opus-4-8 and held off that gradient, so grader != candidate always.
+inspect eval biolit_faithfulness_eval.py --model anthropic/claude-haiku-5-5
+inspect eval biolit_faithfulness_eval.py --model anthropic/claude-sonnet-5-5
+inspect eval biolit_faithfulness_eval.py --model anthropic/claude-opus-5-5
+
+# Override the grader explicitly (any model other than the candidate):
+inspect eval biolit_faithfulness_eval.py --model anthropic/claude-opus-5-5 \
+  -S grader_model=anthropic/claude-sonnet-5-5
 
 inspect view   # browse scored transcripts
+```
+
+Running a candidate against itself is refused — the scorer raises rather than
+return a self-graded number.
+
+```bash
+uv run pytest -q   # grader-output parsing; no API keys needed
 ```
 
 ## Layout
@@ -86,7 +100,8 @@ inspect view   # browse scored transcripts
 ```
 biolit_faithfulness_eval.py     # @task: dataset + solver + scorer
 data/claim_abstract_pairs.jsonl # golden (abstract, claim) pairs with verdicts
-scorers/rubric.py               # 6-dimension rubric scorer
+scorers/rubric.py               # 6-dimension rubric scorer + grader-output parser
+tests/test_rubric.py            # parsing tests (no API keys; run in CI)
 analysis/                       # results tables (populated at M3)
 ```
 

@@ -64,9 +64,40 @@ _DIM_RE = re.compile(r"^DIM(\d):\s*([012])\s*-\s*(.+)$", re.IGNORECASE)
 _TOTAL_RE = re.compile(r"^TOTAL:\s*(\d+)", re.IGNORECASE)
 MAX_SCORE = 12
 
+# Pinned grader. Deliberately held off the candidate capability gradient
+# (haiku-5-5 / sonnet-5-5 / opus-5-5) so that grader != candidate always holds;
+# biolit_rubric raises if the two ever coincide.
+DEFAULT_GRADER_MODEL = "anthropic/claude-opus-4-8"
+
+
+def parse_grader_response(text: str) -> tuple[dict[int, int], int | None]:
+    """Pull DIM1..DIM6 and TOTAL out of the grader's reply.
+
+    Returns (dim_scores, total). `total` falls back to the sum of the parsed
+    dimensions when the TOTAL line is missing or garbled, and is None when
+    nothing parsed at all. Duplicate DIM lines: last one wins.
+    """
+    dim_scores: dict[int, int] = {}
+    total: int | None = None
+
+    for line in text.splitlines():
+        line = line.strip()
+        m = _DIM_RE.match(line)
+        if m:
+            dim_scores[int(m.group(1))] = int(m.group(2))
+            continue
+        m = _TOTAL_RE.match(line)
+        if m:
+            total = min(int(m.group(1)), MAX_SCORE)
+
+    if total is None and dim_scores:
+        total = sum(dim_scores.values())
+
+    return dim_scores, total
+
 
 @scorer(metrics=[accuracy(), mean(), stderr()])
-def biolit_rubric(grader_model: str = "anthropic/claude-opus-4-8"):
+def biolit_rubric(grader_model: str = DEFAULT_GRADER_MODEL):
     """Per-dimension rubric scorer for biomedical literature faithfulness.
 
     Returns normalised total in [0, 1].  Per-dimension sub-scores are stored
@@ -77,6 +108,15 @@ def biolit_rubric(grader_model: str = "anthropic/claude-opus-4-8"):
     dims_block = "\n".join(f"{i+1}. {d}" for i, d in enumerate(RUBRIC_DIMENSIONS))
 
     async def score(state: TaskState, target):
+        # Self-grading inflates scores (a judge prefers its own house style),
+        # so refuse rather than silently produce an unusable number.
+        if str(state.model) == grader_model:
+            raise ValueError(
+                f"grader model must differ from the candidate model "
+                f"(both are {grader_model}); run with "
+                f"-S grader_model=<a different model>"
+            )
+
         prompt = GRADER_TEMPLATE.format(
             question=state.input_text,
             criterion=target.text,
@@ -86,23 +126,12 @@ def biolit_rubric(grader_model: str = "anthropic/claude-opus-4-8"):
         result = await model.generate(prompt)
         text = result.completion
 
-        # Parse per-dimension scores and total.
-        dim_scores: dict[int, int] = {}
-        total: int | None = None
+        dim_scores, total = parse_grader_response(text)
 
-        for line in text.splitlines():
-            m = _DIM_RE.match(line.strip())
-            if m:
-                dim_scores[int(m.group(1))] = int(m.group(2))
-                continue
-            m = _TOTAL_RE.match(line.strip())
-            if m:
-                total = min(int(m.group(1)), MAX_SCORE)
-
-        # Fallback: sum parsed dims if TOTAL line is absent or garbled.
-        if total is None and dim_scores:
-            total = sum(dim_scores.values())
-
+        # ponytail: an unparseable grader reply scores 0.0, which is
+        # indistinguishable from a genuinely terrible answer. Left as-is so the
+        # committed logs stay comparable; raise or emit NaN once M3 reporting
+        # lands, so grader failures surface instead of depressing the mean.
         value = (total / MAX_SCORE) if total is not None else 0.0
         return Score(
             value=value,
