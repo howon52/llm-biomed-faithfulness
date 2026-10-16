@@ -66,8 +66,10 @@ MAX_SCORE = 12
 
 # Pinned grader. Deliberately held off the candidate capability gradient
 # (haiku-5-5 / sonnet-5-5 / opus-5-5) so that grader != candidate always holds;
-# biolit_rubric raises if the two ever coincide.
-DEFAULT_GRADER_MODEL = "anthropic/claude-opus-4-8"
+# biolit_rubric raises if the two ever coincide. Fable rather than opus-5-5
+# precisely so opus-5-5 stays available as the strong candidate rung — pinning
+# the grader to a model on the gradient silently costs you a rung.
+DEFAULT_GRADER_MODEL = "anthropic/claude-fable-5-1"
 
 
 def parse_grader_response(text: str) -> tuple[dict[int, int], int | None]:

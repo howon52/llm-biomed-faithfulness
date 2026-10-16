@@ -49,12 +49,13 @@ Golden examples follow a 1-abstract × 4-claim-type structure:
 | M4 — README polish + writeup | pending |
 | stretch — contribute to [`inspect_evals`](https://github.com/UKGovernmentBEIS/inspect_evals) | future |
 
-**What the runs so far showed** (single model, `claude-opus-4-8`, 12 samples): every sample scored 11–12/12. Three replicate runs gave a test–retest SD of 0.42/12 and two rubric dimensions carried zero information across 36 gradings. A follow-up found the cause: the researcher prompt was naming rubric dimensions, so those dimensions measured prompt compliance rather than capability, and a verdict-first output format produced self-contradicting answers. The prompt is now neutral (reasoning first, verdict last). **An eval that scores every case at ceiling measures nothing** — M3 exists to establish whether this one discriminates once weaker models and a fixed, separate grader are in the mix.
+**What the runs so far showed** (single model, `claude-opus-4-8` as both candidate and grader, 12 samples — superseded, see note below): every sample scored 11–12/12. Three replicate runs gave a test–retest SD of 0.42/12 and two rubric dimensions carried zero information across 36 gradings. A follow-up found the cause: the researcher prompt was naming rubric dimensions, so those dimensions measured prompt compliance rather than capability, and a verdict-first output format produced self-contradicting answers. The prompt is now neutral (reasoning first, verdict last). **An eval that scores every case at ceiling measures nothing** — M3 exists to establish whether this one discriminates once weaker models and a fixed, separate grader are in the mix.
 
 ## Limitations (honest, current)
 
 - **n = 12, one sub-field (ageing omics), one journal family.** No confidence interval worth reporting; no clinical/RCT, genomics or immunology breadth yet.
-- **Single model evaluated so far**, and in early runs the grader model was the same as the candidate — which inflates scores, since a judge favours its own house style. Grader ≠ candidate is now enforced in code (`scorers/rubric.py` raises if they coincide); the grader is pinned to `claude-opus-4-8`.
+- **Single model evaluated so far**, and in early runs the grader model was the same as the candidate — which inflates scores, since a judge favours its own house style. Grader ≠ candidate is now enforced in code (`scorers/rubric.py` raises if they coincide); the grader is pinned to `claude-fable-5-1`, chosen to sit off the candidate gradient so all three 5-5 rungs stay usable as candidates.
+- **The M1–M2 numbers above ran on `claude-opus-4-8`, now a legacy model**, and are kept as the superseded measurement rather than relabelled. The test–retest and per-dimension-entropy findings are what motivate M3, so they are still the live evidence; the absolute scores are not comparable to anything run on the 5-5 family.
 - **Labels are self-authored** by one bio-trained reader with no second rater. Grader–human agreement has not been measured.
 - **Mean rubric score is not "accuracy."** The score is a continuous [0,1] rubric mean; per-dimension and per-perturbation-type breakdowns with stderr are the intended report format.
 
@@ -76,7 +77,7 @@ uv sync
 export ANTHROPIC_API_KEY=...
 
 # Candidates sit on a capability gradient; the grader is pinned to
-# claude-opus-4-8 and held off that gradient, so grader != candidate always.
+# claude-fable-5-1 and held off that gradient, so grader != candidate always.
 inspect eval biolit_faithfulness_eval.py --model anthropic/claude-haiku-5-5
 inspect eval biolit_faithfulness_eval.py --model anthropic/claude-sonnet-5-5
 inspect eval biolit_faithfulness_eval.py --model anthropic/claude-opus-5-5

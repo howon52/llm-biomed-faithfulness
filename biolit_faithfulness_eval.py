@@ -14,7 +14,7 @@ Dataset: data/claim_abstract_pairs.jsonl
           perturbation_type, domain, difficulty
 
 Run:
-    inspect eval biolit_faithfulness_eval.py --model anthropic/claude-opus-4-8
+    inspect eval biolit_faithfulness_eval.py --model anthropic/claude-sonnet-5-5
     inspect eval biolit_faithfulness_eval.py --model openai/gpt-4o
     inspect view   # browse scored transcripts
 """
