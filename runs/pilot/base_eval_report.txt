@@ -1,0 +1,31 @@
+120 data rows; responses per stage: base_eval=120
+
+stat                                 base_eval
+truncated                   0.0 [  0.0,   0.0]
+parse_rate                100.0 [100.0, 100.0]
+accuracy                   74.2 [ 66.1,  81.7]
+recall_supported           75.0 [ 60.6,  87.2]
+recall_refuted             85.0 [ 72.9,  94.9]
+recall_insufficient        62.5 [ 46.5,  77.8]
+numeric_fabrication        14.1 [  7.1,  22.0]
+grounding_precision        51.5 [ 44.1,  58.4]
+grounding_recall           81.2 [ 73.6,  88.3]
+n_words                179.98 [167.35, 193.95]
+hedge_rate                 0.28 [ 0.20,  0.38]
+assertive_rate             0.40 [ 0.31,  0.49]
+proxy                      0.49 [ 0.47,  0.51]
+  (% for rates; mean [95% CI], bootstrap clustered by doc_id)
+
+Confusion -- base_eval
+gold \ parsed                SUPPORTED       REFUTED  INSUFFICIENT          None
+SUPPORTED                           30             3             7             0
+REFUTED                              3            34             3             0
+INSUFFICIENT EVIDENCE                4            11            25             0
+
+Pilot answers
+  1. format:   parse rate 100.0 %, truncated 0.0 %
+  2. H2 room:  INSUFFICIENT recall 62.5 % [46.5, 77.8]  ->  HEADROOM OK (gate 0.15..0.95)
+  3. length:   reasoning words p10/p50/p90/max = 99/174/260/524  ->  PROXY_LENGTH_SATURATION ~ 260 (p90)
+  4. metrics:  grounding precision at exactly 0 or 1 in 32 % of scored rows; 74 % of responses contain a number
+
+wrote runs/pilot/base_eval.json
